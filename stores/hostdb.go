@@ -1005,10 +1005,10 @@ func insertAnnouncements(tx *gorm.DB, as []announcement) error {
 			NetAddress:  a.announcement.NetAddress,
 		})
 	}
-	if err := tx.Create(&announcements).Error; err != nil {
+	if err := tx.Create(&hosts).Error; err != nil {
 		return err
 	}
-	return tx.Create(&hosts).Error
+	return tx.Create(&announcements).Error
 }
 
 func applyRevisionUpdate(db *gorm.DB, fcid types.FileContractID, rev revisionUpdate) error {

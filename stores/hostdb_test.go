@@ -552,6 +552,12 @@ func TestInsertAnnouncements(t *testing.T) {
 	}
 	if len(hosts) != 3 {
 		t.Fatal("invalid number of hosts")
+	} else if !bytes.Equal(hosts[0].PublicKey[:], ann1.hostKey[:]) {
+		t.Fatal("public key mismatch")
+	} else if !bytes.Equal(hosts[1].PublicKey[:], ann2.hostKey[:]) {
+		t.Fatal("public key mismatch")
+	} else if !bytes.Equal(hosts[2].PublicKey[:], ann3.hostKey[:]) {
+		t.Fatal("public key mismatch")
 	}
 
 	// There should be 7 announcements total.
