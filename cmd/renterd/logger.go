@@ -44,6 +44,9 @@ func NewLogger(dir string, cfg config.Log) (*zap.Logger, func(context.Context) e
 		}
 	}
 
+	fmt.Println("DEBUG PJ: file level", fileLevel)
+	fmt.Println("DEBUG PJ: stout level", stdoutLevel)
+
 	closeFn := func(_ context.Context) error { return nil }
 
 	// file logger

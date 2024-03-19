@@ -84,7 +84,7 @@ var (
 		},
 		Log: config.Log{
 			Path:  "", // deprecated. included for compatibility.
-			Level: "info",
+			Level: "debug",
 			File: config.LogFile{
 				Enabled: true,
 				Format:  "json",
@@ -97,8 +97,9 @@ var (
 			},
 			Database: config.DatabaseLog{
 				Enabled:                   true,
+				Level:                     "warn",
 				IgnoreRecordNotFoundError: true,
-				SlowThreshold:             100 * time.Millisecond,
+				SlowThreshold:             500 * time.Millisecond,
 			},
 		},
 		Bus: config.Bus{
@@ -263,7 +264,7 @@ func main() {
 	tryLoadConfig()
 
 	// deprecated - these go first so that they can be overwritten by the non-deprecated flags
-	flag.StringVar(&cfg.Log.Database.Level, "db.logger.logLevel", cfg.Log.Level, "(deprecated) Logger level (overrides with RENTERD_DB_LOGGER_LOG_LEVEL)")
+	// flag.StringVar(&cfg.Log.Database.Level, "db.logger.logLevel", cfg.Log.Level, "(deprecated) Logger level (overrides with RENTERD_DB_LOGGER_LOG_LEVEL)")
 	flag.BoolVar(&cfg.Database.Log.IgnoreRecordNotFoundError, "db.logger.ignoreNotFoundError", cfg.Database.Log.IgnoreRecordNotFoundError, "(deprecated) Ignores 'not found' errors in logger (overrides with RENTERD_DB_LOGGER_IGNORE_NOT_FOUND_ERROR)")
 	flag.DurationVar(&cfg.Database.Log.SlowThreshold, "db.logger.slowThreshold", cfg.Database.Log.SlowThreshold, "(deprecated) Threshold for slow queries in logger (overrides with RENTERD_DB_LOGGER_SLOW_THRESHOLD)")
 	flag.StringVar(&cfg.Log.Path, "log-path", cfg.Log.Path, "(deprecated) Path to directory for logs (overrides with RENTERD_LOG_PATH)")
@@ -477,6 +478,7 @@ func main() {
 	}
 	defer closeFn(context.Background())
 
+	logger.Debug("DEBUG PJ: should show in DEBUG")
 	logger.Info("renterd", zap.String("version", build.Version()), zap.String("network", build.NetworkName()), zap.String("commit", build.Commit()), zap.Time("buildDate", build.BuildTime()))
 
 	// configure database logger
