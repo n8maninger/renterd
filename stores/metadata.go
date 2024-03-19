@@ -1335,8 +1335,6 @@ FROM (
 	)
 	parameters := append(append(objectsQueryParams, markerParams...), limit, offset)
 
-	fmt.Println(query)
-	fmt.Println(parameters)
 	if err = s.db.
 		WithContext(ctx).
 		Raw(query, parameters...).
