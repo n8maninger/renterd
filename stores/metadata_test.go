@@ -1372,6 +1372,48 @@ func TestObjectHealth(t *testing.T) {
 	}
 }
 
+func TestObjectEntriesPerformance(t *testing.T) {
+	cfg := defaultTestSQLStoreConfig
+	cfg.persistent = true
+	cfg.dir = "/Users/peterjan/testing"
+	os.RemoveAll(cfg.dir)
+	ss := newTestSQLStore(t, cfg)
+	defer ss.Close()
+
+	const letters = "abcdefghijklmnopqrstuvwxyz"
+	paths := make(map[string]struct{})
+	for {
+		var parts []string
+		for j := 0; j < frand.Intn(4)+1; j++ {
+			parts = append(parts, string(letters[frand.Intn(len(letters))]))
+		}
+		path := "/" + strings.Join(parts, "/")
+		_, exists := paths[path]
+		if !exists {
+			paths[path] = struct{}{}
+		}
+		if len(paths) == 1e4 {
+			break
+		}
+	}
+
+	for p := range paths {
+		_, err := ss.addTestObject(p, newTestObject(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	start := time.Now()
+	entries, _, err := ss.ObjectEntries(context.Background(), api.DefaultBucketName, "/a/", "", "", "", "", 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(start)
+	t.Log(elapsed)
+	t.Log(len(entries))
+}
+
 // TestObjectEntries is a test for the ObjectEntries method.
 func TestObjectEntries(t *testing.T) {
 	ss := newTestSQLStore(t, defaultTestSQLStoreConfig)
@@ -3138,6 +3180,10 @@ func TestBucketObjects(t *testing.T) {
 	// Adding an object to a bucket that doesn't exist shouldn't work.
 	obj := newTestObject(1)
 	err := ss.UpdateObject(context.Background(), "unknown-bucket", "foo", testContractSet, testETag, testMimeType, testMetadata, obj)
+	if !errors.Is(err, api.ErrBucketNotFound) {
+		t.Fatal("expected ErrBucketNotFound", err)
+	}
+	err = ss.UpdateObject(context.Background(), "unknown-bucket", "foo", testContractSet, testETag, testMimeType, testMetadata, obj)
 	if !errors.Is(err, api.ErrBucketNotFound) {
 		t.Fatal("expected ErrBucketNotFound", err)
 	}

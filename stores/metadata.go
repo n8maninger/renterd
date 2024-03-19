@@ -1335,6 +1335,8 @@ FROM (
 	)
 	parameters := append(append(objectsQueryParams, markerParams...), limit, offset)
 
+	fmt.Println(query)
+	fmt.Println(parameters)
 	if err = s.db.
 		WithContext(ctx).
 		Raw(query, parameters...).
@@ -2733,6 +2735,27 @@ func (s *SQLStore) deleteObject(tx *gorm.DB, bucket string, path string) (int64,
 		return 0, err
 	} else if resp.RowsAffected == 0 {
 		return 0, nil
+	}
+	type dbDebug struct {
+		ObjectID   string
+		Root       hash256
+		LatestHost publicKey
+	}
+
+	rows := make([]dbDebug, 0)
+	if err := tx.Raw(`
+select objects.object_id, sectors.root, sectors.latest_host
+from objects
+inner join buckets on objects.db_bucket_id = buckets.id and buckets.name = ?
+inner join slices on slices.db_object_id = objects.id
+inner join slabs on slices.db_slab_id = slabs.id
+inner join sectors on sectors.db_slab_id = slabs.id
+where object_id = ?;
+`, bucket, path).Scan(&rows).Error; err != nil {
+		panic(err)
+	}
+	for _, row := range rows {
+		s.logger.Debugw("DEBUG PJ: DELETE ROOT", "hk", types.PublicKey(row.LatestHost), "root", types.Hash256(row.Root))
 	}
 
 	tx = tx.Where("id", objID).

@@ -760,6 +760,7 @@ loop:
 
 				// handle lost sectors
 				if isSectorNotFound(resp.err) {
+					s.mgr.logger.Debugw("DEBUG PJ: LOST ROOT", "hk", resp.req.host.PublicKey(), "root", resp.req.root)
 					if err := s.mgr.os.DeleteHostSector(ctx, resp.req.host.PublicKey(), resp.req.root); err != nil {
 						s.mgr.logger.Errorw("failed to mark sector as lost", "hk", resp.req.host.PublicKey(), "root", resp.req.root, zap.Error(err))
 					}

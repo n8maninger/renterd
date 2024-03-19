@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	rhpv2 "go.sia.tech/core/rhp/v2"
 	"go.sia.tech/core/types"
 	"go.sia.tech/renterd/api"
 	"go.sia.tech/renterd/hostdb"
@@ -276,5 +277,149 @@ func TestSectorPruning(t *testing.T) {
 	_, _, err = w.RHPPruneContract(context.Background(), c.ID, 0)
 	if err == nil || !strings.Contains(err.Error(), "gouging") {
 		t.Fatal("expected gouging error", err)
+	}
+}
+
+func TestDebugPruning(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+
+	// create a cluster with one host
+	cluster := newTestCluster(t, testClusterOptions{hosts: 1})
+	defer cluster.Shutdown()
+
+	// convenience variables
+	b := cluster.Bus
+	w := cluster.Worker
+
+	// update the bus to have redundancy of 1-1
+	rs := api.RedundancySettings{MinShards: 1, TotalShards: 1}
+	b.UpdateSetting(context.Background(), api.SettingRedundancy, rs)
+
+	// upload one object
+	_, err := w.UploadObject(context.Background(), bytes.NewReader([]byte(t.Name())), api.DefaultBucketName, t.Name(), api.UploadObjectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// fetch the object
+	obj, err := b.Object(context.Background(), api.DefaultBucketName, t.Name(), api.GetObjectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	} else if len(obj.Object.Slabs) != 1 {
+		t.Fatal("unexpected number of slabs", len(obj.Object.Slabs))
+	} else if len(obj.Object.Slabs[0].Shards) != 1 {
+		t.Fatal("unexpected number of shards", len(obj.Object.Slabs[0].Shards))
+	} else if len(obj.Object.Slabs[0].Shards[0].Contracts) != 1 {
+		t.Fatal("unexpected number of contracts", len(obj.Object.Slabs[0].Shards[0].Contracts))
+	}
+
+	// fetch the contract roots
+	sector := obj.Object.Slabs[0].Shards[0]
+	fcid := sector.Contracts[sector.LatestHost][0]
+
+	// assert it has our root
+	roots, _, err := b.ContractRoots(context.Background(), fcid)
+	if err != nil {
+		t.Fatal(err)
+	} else if len(roots) != 1 {
+		t.Fatal("unexpected number of roots", len(roots))
+	} else if roots[0] != sector.Root {
+		t.Fatal("unexpected root", roots[0], sector.Root)
+	}
+
+	// fetch the contract roots from the host
+	roots, err = w.RHPContractRoots(context.Background(), fcid)
+	if err != nil {
+		t.Fatal(err)
+	} else if len(roots) != 1 {
+		t.Fatal("unexpected number of roots", len(roots))
+	} else if roots[0] != sector.Root {
+		t.Fatal("unexpected root", roots[0], sector.Root)
+	}
+
+	// upload more data but immediately delete it
+	_, err = w.UploadObject(context.Background(), bytes.NewReader([]byte(t.Name())), api.DefaultBucketName, t.Name()+"DEL", api.UploadObjectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = b.DeleteObject(context.Background(), api.DefaultBucketName, t.Name()+"DEL", api.DeleteObjectOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// assert we have prunable data
+	res, err := b.PrunableData(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	} else if res.TotalPrunable != rhpv2.SectorSize {
+		t.Fatal("expected 0 prunable data", res.TotalPrunable)
+	}
+
+	// mine to renew window and wait for the renewed contract
+	cluster.MineToRenewWindow()
+	var renewed api.ContractMetadata
+	cluster.tt.Retry(100, 100*time.Millisecond, func() error {
+		var err error
+		renewed, err = b.RenewedContract(context.Background(), fcid)
+		if err != nil {
+			// TODO: once we have utils.isErr we should check for
+			// api.ContractNotFound expl. and t.Fail if it's a diff error
+			return err
+		}
+		return nil
+	})
+
+	// assert the original contract has no roots
+	roots, _, err = b.ContractRoots(context.Background(), fcid)
+	if err != nil {
+		t.Fatal(err)
+	} else if len(roots) != 0 {
+		t.Fatal("unexpected number of roots", len(roots))
+	}
+
+	// assert the original contract can't be found
+	roots, err = w.RHPContractRoots(context.Background(), fcid)
+	if err == nil || !strings.Contains(err.Error(), "couldn't find contract") {
+		t.Fatal(err)
+	}
+
+	// assert the renewal has our root
+	roots, _, err = b.ContractRoots(context.Background(), renewed.ID)
+	if err != nil {
+		t.Fatal(err)
+	} else if len(roots) != 1 {
+		t.Fatal("unexpected number of roots", len(roots))
+	} else if roots[0] != sector.Root {
+		t.Fatal("unexpected root", roots[0], sector.Root)
+	}
+
+	// fetch the contract roots from the renewed contract on the host
+	roots, err = w.RHPContractRoots(context.Background(), renewed.ID)
+	if err != nil {
+		t.Fatal(err)
+	} else if len(roots) != 2 {
+		t.Fatal("unexpected number of roots", len(roots))
+	} else if roots[0] != sector.Root {
+		t.Fatal("unexpected root", roots[0], sector.Root)
+	}
+
+	// prune the contract
+	pruned, _, err := w.RHPPruneContract(context.Background(), renewed.ID, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	} else if pruned != rhpv2.SectorSize {
+		t.Fatal("expected 1 pruned sector", pruned)
+	}
+
+	// fetch the contract roots from the renewed contract on the host
+	roots, err = w.RHPContractRoots(context.Background(), renewed.ID)
+	if err != nil {
+		t.Fatal(err)
+	} else if len(roots) != 1 {
+		t.Fatal("unexpected number of roots", len(roots))
+	} else if roots[0] != sector.Root {
+		t.Fatal("unexpected root", roots[0], sector.Root)
 	}
 }

@@ -240,6 +240,7 @@ func (u *uploader) execute(req *sectorUploadReq) (time.Duration, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to upload sector to contract %v, err: %v", fcid, err)
 	}
+	u.logger.Debugw("DEBUG PJ: UPLOAD", "hk", host.PublicKey(), "root", req.sector.root, "fcid", fcid)
 
 	// calculate elapsed time
 	elapsed := time.Since(start)

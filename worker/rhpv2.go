@@ -310,6 +310,7 @@ func (w *worker) PruneContract(ctx context.Context, hostIP string, hostKey types
 						delete(keep, root) // prevent duplicates
 						continue
 					}
+					w.logger.Debugw("DEBUG PJ: PRUNE ROOT", "hk", hostKey, "fcid", fcid, "root", root, "index", i)
 					indices = append(indices, uint64(i))
 				}
 				if len(indices) == 0 {
@@ -383,6 +384,7 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 
 			// build a set of actions that move the sectors we want to delete
 			// towards the end of the contract, preparing them to be trimmed off
+			var hra []string
 			var actions []rhpv2.RPCWriteAction
 			cIndex := numSectors - 1
 			for _, rIndex := range batch {
@@ -392,6 +394,7 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 						A:    uint64(cIndex),
 						B:    uint64(rIndex),
 					})
+					hra = append(hra, fmt.Sprintf("swap %d <-> %d", rIndex, cIndex))
 				}
 				cIndex--
 			}
@@ -399,6 +402,9 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 				Type: rhpv2.RPCWriteActionTrim,
 				A:    uint64(len(batch)),
 			})
+			hra = append(hra, fmt.Sprintf("trim %d", len(batch)))
+
+			w.logger.Debugw(fmt.Sprintf("DEBUG PJ: PRUNE actions: %v", strings.Join(hra, ",")), "hk", rev.HostKey(), "fcid", rev.ID(), "batch", i+1)
 
 			// calculate the cost
 			var remainingDuration uint64 // not needed for deletions

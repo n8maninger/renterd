@@ -11,6 +11,7 @@ import (
 	"go.sia.tech/renterd/api"
 	"go.sia.tech/renterd/internal/utils"
 	"go.sia.tech/siad/build"
+	"lukechampine.com/frand"
 )
 
 var (
@@ -136,6 +137,10 @@ func (c *contractor) performContractPruning(wp *workerPool) {
 		c.logger.Info("no contracts to prune")
 		return
 	}
+
+	frand.Shuffle(len(prunable), func(i, j int) {
+		prunable[i], prunable[j] = prunable[j], prunable[i]
+	})
 
 	// prune every contract individually, one at a time and for a maximum
 	// duration of 'timeoutPruneContract' to limit the amount of time we lock

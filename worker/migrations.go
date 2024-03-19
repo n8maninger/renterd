@@ -52,6 +52,13 @@ SHARDS:
 			}
 		}
 		// no good host found for shard
+		var all []types.FileContractID
+		for _, fcids := range shard.Contracts {
+			for _, fcid := range fcids {
+				all = append(all, fcid)
+			}
+		}
+		w.logger.Debugw("DEBUG PJ: MIGRATE ROOT", "hk", shard.LatestHost, "root", shard.Root, "fcids", all)
 		shardIndices = append(shardIndices, i)
 	}
 
