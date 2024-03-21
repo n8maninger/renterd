@@ -2752,8 +2752,12 @@ where object_id = ?;
 `, bucket, path).Scan(&rows).Error; err != nil {
 		panic(err)
 	}
-	for _, row := range rows {
-		s.logger.Debugw("DEBUG PJ: DELETE ROOT", "hk", types.PublicKey(row.LatestHost), "root", types.Hash256(row.Root))
+	if len(rows) > 0 {
+		for _, row := range rows {
+			s.logger.Debugw("DEBUG PJ: DELETE ROOT", "hk", types.PublicKey(row.LatestHost), "root", types.Hash256(row.Root))
+		}
+	} else {
+		s.logger.Debugw("DEBUG PJ: NO ROOTS", "bucket", bucket, "path", path)
 	}
 
 	tx = tx.Where("id", objID).
