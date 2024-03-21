@@ -2219,15 +2219,21 @@ func (s *SQLStore) createSlices(tx *gorm.DB, objID, multiPartID *uint, contractS
 	for _, ss := range slices {
 		for _, shard := range ss.Shards {
 			sectorID := sectorIDs[sectorIdx]
-			for _, fcids := range shard.Contracts {
-				for _, fcid := range fcids {
-					if _, ok := contracts[fcid]; ok {
-						contractSectors = append(contractSectors, dbContractSector{
-							DBSectorID:   sectorID,
-							DBContractID: contracts[fcid].ID,
-						})
+			if len(shard.Contracts) > 0 {
+				for _, fcids := range shard.Contracts {
+					for _, fcid := range fcids {
+						if _, ok := contracts[fcid]; ok {
+							contractSectors = append(contractSectors, dbContractSector{
+								DBSectorID:   sectorID,
+								DBContractID: contracts[fcid].ID,
+							})
+						} else {
+							s.logger.Debugw("DEBUG PJ: NO CONTRACT", "root", shard.Root)
+						}
 					}
 				}
+			} else {
+				s.logger.Debugw("DEBUG PJ: NO CONTRACTS", "root", shard.Root)
 			}
 			sectorIdx++
 		}
@@ -2721,6 +2727,7 @@ AND slabs.db_buffered_slab_id IS NULL
 // without an obect after the deletion. That means in case of packed uploads,
 // the slab is only deleted when no more objects point to it.
 func (s *SQLStore) deleteObject(tx *gorm.DB, bucket string, path string) (int64, error) {
+	s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path)
 	// check if the object exists first to avoid unnecessary locking for the
 	// common case
 	var objID uint

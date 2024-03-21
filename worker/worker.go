@@ -129,6 +129,8 @@ type (
 		TrackUpload(ctx context.Context, uID api.UploadID) error
 		UpdateSlab(ctx context.Context, s object.Slab, contractSet string) error
 
+		ObjectsBySlabKey(ctx context.Context, bucket string, key object.EncryptionKey) (objects []api.ObjectMetadata, err error)
+
 		// NOTE: used by worker
 		Bucket(_ context.Context, bucket string) (api.Bucket, error)
 		Object(ctx context.Context, bucket, path string, opts api.GetObjectOptions) (api.ObjectsResponse, error)

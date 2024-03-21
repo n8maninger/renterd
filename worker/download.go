@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,6 +59,7 @@ type (
 	slabDownload struct {
 		mgr *downloadManager
 
+		key       object.EncryptionKey
 		minShards int
 		offset    uint32
 		length    uint32
@@ -513,6 +515,7 @@ func (mgr *downloadManager) newSlabDownload(slice object.SlabSlice, migration bo
 	return &slabDownload{
 		mgr: mgr,
 
+		key:       slice.Key,
 		minShards: int(slice.MinShards),
 		offset:    offset,
 		length:    length,
@@ -760,7 +763,18 @@ loop:
 
 				// handle lost sectors
 				if isSectorNotFound(resp.err) {
-					s.mgr.logger.Debugw("DEBUG PJ: LOST ROOT", "hk", resp.req.host.PublicKey(), "root", resp.req.root)
+					ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+					objs, errr := s.mgr.os.ObjectsBySlabKey(ctx, api.DefaultBucketName, s.key)
+					cancel()
+					if errr != nil {
+						s.mgr.logger.Debugf("DEBUG PJ: failed to get objects by slab key, err %v", errr)
+					}
+					var oids []string
+					for _, o := range objs {
+						oids = append(oids, o.Name)
+					}
+
+					s.mgr.logger.Debugw("DEBUG PJ: LOST ROOT", "hk", resp.req.host.PublicKey(), "root", resp.req.root, "objects", strings.Join(oids, "|"))
 					if err := s.mgr.os.DeleteHostSector(ctx, resp.req.host.PublicKey(), resp.req.root); err != nil {
 						s.mgr.logger.Errorw("failed to mark sector as lost", "hk", resp.req.host.PublicKey(), "root", resp.req.root, zap.Error(err))
 					}
