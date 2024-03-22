@@ -1013,12 +1013,12 @@ func (b *bus) contractsPrunableDataHandlerGET(jc jape.Context) {
 		// how we record contract spending a contract's size might already
 		// include pending sectors
 		pending := b.uploadingSectors.pending(fcid)
+		b.logger.Debugw("DEBUG PJ: prunable data", "fcid", fcid, "size", size.Size, "prunable", size.Prunable, "sectors", size.Size/rhpv2.SectorSize, "pending", pending)
 		if pending > size.Prunable {
 			size.Prunable = 0
 		} else {
 			size.Prunable -= pending
 		}
-
 		contracts = append(contracts, api.ContractPrunableData{
 			ID:           fcid,
 			ContractSize: size,

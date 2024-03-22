@@ -1438,6 +1438,7 @@ func (s *SQLStore) RecordContractSpending(ctx context.Context, records []api.Con
 			}
 			updates["revision_number"] = latestValues[fcid].revision
 			updates["size"] = latestValues[fcid].size
+			s.logger.Debugw("DEBUG PJ: UPDATE CONTRACT SPENDING", "fcid", fcid, "size", updates["size"], "rev", updates["revision_number"])
 			return tx.Model(&contract).Updates(updates).Error
 		})
 		if err != nil {
