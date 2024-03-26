@@ -38,7 +38,7 @@ func ForEachAnnouncement(b types.Block, height uint64, fn func(types.PublicKey, 
 			// verify signature
 			var hostKey types.PublicKey
 			copy(hostKey[:], ha.PublicKey.Key)
-			annHash := types.Hash256(crypto.HashObject(ha.HostAnnouncement)) // TODO
+			annHash := types.Hash256(crypto.HashObject(ha.HostAnnouncement))
 			if !hostKey.VerifyHash(annHash, ha.Signature) {
 				continue
 			}
@@ -112,12 +112,6 @@ type Host struct {
 type HostPriceTable struct {
 	rhpv3.HostPriceTable
 	Expiry time.Time `json:"expiry"`
-}
-
-// HostInfo extends the host type with a field indicating whether it is blocked or not.
-type HostInfo struct {
-	Host
-	Blocked bool `json:"blocked"`
 }
 
 // IsAnnounced returns whether the host has been announced.

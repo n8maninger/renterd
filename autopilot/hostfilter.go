@@ -11,7 +11,6 @@ import (
 	rhpv3 "go.sia.tech/core/rhp/v3"
 	"go.sia.tech/core/types"
 	"go.sia.tech/renterd/api"
-	"go.sia.tech/renterd/hostdb"
 	"go.sia.tech/renterd/worker"
 )
 
@@ -176,15 +175,18 @@ func (u *unusableHostResult) keysAndValues() []interface{} {
 
 // isUsableHost returns whether the given host is usable along with a list of
 // reasons why it was deemed unusable.
-func isUsableHost(cfg api.AutopilotConfig, rs api.RedundancySettings, gc worker.GougingChecker, h hostdb.Host, minScore float64, storedData uint64) (bool, unusableHostResult) {
+func isUsableHost(cfg api.AutopilotConfig, rs api.RedundancySettings, gc worker.GougingChecker, h api.Host, minScore float64, storedData uint64) (bool, unusableHostResult) {
 	if rs.Validate() != nil {
 		panic("invalid redundancy settings were supplied - developer error")
 	}
 
 	var errs []error
+	if h.Blocked {
+		errs = append(errs, errHostBlocked)
+	}
+
 	var gougingBreakdown api.HostGougingBreakdown
 	var scoreBreakdown api.HostScoreBreakdown
-
 	if !h.IsAnnounced() {
 		errs = append(errs, errHostNotAnnounced)
 	} else if !h.Scanned {
@@ -211,7 +213,7 @@ func isUsableHost(cfg api.AutopilotConfig, rs api.RedundancySettings, gc worker.
 			// not gouging, this because the core package does not have overflow
 			// checks in its cost calculations needed to calculate the period
 			// cost
-			scoreBreakdown = hostScore(cfg, h, storedData, rs.Redundancy())
+			scoreBreakdown = hostScore(cfg, h.Host, storedData, rs.Redundancy())
 			if scoreBreakdown.Score() < minScore {
 				errs = append(errs, fmt.Errorf("%w: (%s): %v < %v", errLowScore, scoreBreakdown.String(), scoreBreakdown.Score(), minScore))
 			}

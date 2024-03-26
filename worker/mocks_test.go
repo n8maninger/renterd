@@ -260,13 +260,18 @@ var errSectorOutOfBounds = errors.New("sector out of bounds")
 
 type hostMock struct {
 	hk types.PublicKey
-	hi hostdb.HostInfo
+	hi api.Host
 }
 
 func newHostMock(hk types.PublicKey) *hostMock {
 	return &hostMock{
 		hk: hk,
-		hi: hostdb.HostInfo{Host: hostdb.Host{PublicKey: hk, Scanned: true}},
+		hi: api.Host{
+			Host: hostdb.Host{
+				PublicKey: hk,
+				Scanned:   true,
+			},
+		},
 	}
 }
 
@@ -282,13 +287,13 @@ func newHostStoreMock() *hostStoreMock {
 	return &hostStoreMock{hosts: make(map[types.PublicKey]*hostMock)}
 }
 
-func (hs *hostStoreMock) Host(ctx context.Context, hostKey types.PublicKey) (hostdb.HostInfo, error) {
+func (hs *hostStoreMock) Host(ctx context.Context, hostKey types.PublicKey) (api.Host, error) {
 	hs.mu.Lock()
 	defer hs.mu.Unlock()
 
 	h, ok := hs.hosts[hostKey]
 	if !ok {
-		return hostdb.HostInfo{}, api.ErrHostNotFound
+		return api.Host{}, api.ErrHostNotFound
 	}
 	return h.hi, nil
 }
@@ -375,7 +380,7 @@ func newObjectStoreMock(bucket string) *objectStoreMock {
 	return os
 }
 
-func (os *objectStoreMock) AddMultipartPart(ctx context.Context, bucket, path, contractSet, ETag, uploadID string, partNumber int, slices []object.SlabSlice) (err error) {
+func (os *objectStoreMock) AddMultipartPart(ctx context.Context, bucket, path, contractSet, eTag, uploadID string, partNumber int, slices []object.SlabSlice) (err error) {
 	return nil
 }
 

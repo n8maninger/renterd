@@ -154,7 +154,7 @@ func check(context string, err error) {
 }
 
 func mustLoadAPIPassword() {
-	if len(cfg.HTTP.Password) != 0 {
+	if cfg.HTTP.Password != "" {
 		return
 	}
 
@@ -207,7 +207,7 @@ func mustParseWorkers(workers, password string) {
 // loaded.
 func tryLoadConfig() {
 	configPath := "renterd.yml"
-	if str := os.Getenv("RENTERD_CONFIG_FILE"); len(str) != 0 {
+	if str := os.Getenv("RENTERD_CONFIG_FILE"); str != "" {
 		configPath = str
 	}
 
@@ -274,7 +274,7 @@ func main() {
 	flag.StringVar(&cfg.Directory, "dir", cfg.Directory, "Directory for storing node state")
 
 	// logger
-	flag.StringVar(&cfg.Log.Level, "log.level", cfg.Log.Level, "Global logger level (info|warn|error). Defaults to 'info' (overrides with RENTERD_LOG_LEVEL)")
+	flag.StringVar(&cfg.Log.Level, "log.level", cfg.Log.Level, "Global logger level (debug|info|warn|error). Defaults to 'info' (overrides with RENTERD_LOG_LEVEL)")
 	flag.BoolVar(&cfg.Log.File.Enabled, "log.file.enabled", cfg.Log.File.Enabled, "Enables logging to disk. Defaults to 'true'. (overrides with RENTERD_LOG_FILE_ENABLED)")
 	flag.StringVar(&cfg.Log.File.Format, "log.file.format", cfg.Log.File.Format, "Format of log file (json|human). Defaults to 'json' (overrides with RENTERD_LOG_FILE_FORMAT)")
 	flag.StringVar(&cfg.Log.File.Path, "log.file.path", cfg.Log.File.Path, "Path of log file. Defaults to 'renterd.log' within the renterd directory. (overrides with RENTERD_LOG_FILE_PATH)")
@@ -282,7 +282,7 @@ func main() {
 	flag.StringVar(&cfg.Log.StdOut.Format, "log.stdout.format", cfg.Log.StdOut.Format, "Format of log output (json|human). Defaults to 'human' (overrides with RENTERD_LOG_STDOUT_FORMAT)")
 	flag.BoolVar(&cfg.Log.StdOut.EnableANSI, "log.stdout.enableANSI", cfg.Log.StdOut.EnableANSI, "Enables ANSI color codes in log output. Defaults to 'true' on non-Windows systems. (overrides with RENTERD_LOG_STDOUT_ENABLE_ANSI)")
 	flag.BoolVar(&cfg.Log.Database.Enabled, "log.database.enabled", cfg.Log.Database.Enabled, "Enable logging database queries. Defaults to 'true' (overrides with RENTERD_LOG_DATABASE_ENABLED)")
-	flag.StringVar(&cfg.Log.Database.Level, "log.database.level", cfg.Log.Database.Level, "Logger level for database queries (info|warn|error). Defaults to 'info' (overrides with RENTERD_LOG_DATABASE_LEVEL)")
+	flag.StringVar(&cfg.Log.Database.Level, "log.database.level", cfg.Log.Database.Level, "Logger level for database queries (info|warn|error). Defaults to 'warn' (overrides with RENTERD_LOG_LEVEL and RENTERD_LOG_DATABASE_LEVEL)")
 	flag.BoolVar(&cfg.Log.Database.IgnoreRecordNotFoundError, "log.database.ignoreRecordNotFoundError", cfg.Log.Database.IgnoreRecordNotFoundError, "Enable ignoring 'not found' errors resulting from database queries. Defaults to 'true' (overrides with RENTERD_LOG_DATABASE_IGNORE_RECORD_NOT_FOUND_ERROR)")
 	flag.DurationVar(&cfg.Log.Database.SlowThreshold, "log.database.slowThreshold", cfg.Log.Database.SlowThreshold, "Threshold for slow queries in logger. Defaults to 100ms (overrides with RENTERD_LOG_DATABASE_SLOW_THRESHOLD)")
 
@@ -458,11 +458,15 @@ func main() {
 	}
 	var level logger.LogLevel
 	switch strings.ToLower(lvlStr) {
+	case "":
+		level = logger.Warn // default to 'warn' if not set
 	case "error":
 		level = logger.Error
 	case "warn":
 		level = logger.Warn
 	case "info":
+		level = logger.Info
+	case "debug":
 		level = logger.Info
 	default:
 		log.Fatalf("invalid log level %q, options are: silent, error, warn, info", cfg.Log.Level)
@@ -472,6 +476,9 @@ func main() {
 	}
 
 	// Create logger.
+	if cfg.Log.Level == "" {
+		cfg.Log.Level = "info" // default to 'info' if not set
+	}
 	logger, closeFn, err := NewLogger(cfg.Directory, cfg.Log)
 	if err != nil {
 		log.Fatalln("failed to create logger:", err)

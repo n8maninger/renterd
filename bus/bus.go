@@ -91,14 +91,13 @@ type (
 
 	// A HostDB stores information about hosts.
 	HostDB interface {
-		Host(ctx context.Context, hostKey types.PublicKey) (hostdb.HostInfo, error)
-		Hosts(ctx context.Context, offset, limit int) ([]hostdb.Host, error)
+		Host(ctx context.Context, hostKey types.PublicKey) (api.Host, error)
 		HostsForScanning(ctx context.Context, maxLastScan time.Time, offset, limit int) ([]hostdb.HostAddress, error)
 		RecordHostScans(ctx context.Context, scans []hostdb.HostScan) error
 		RecordPriceTables(ctx context.Context, priceTableUpdate []hostdb.PriceTableUpdate) error
 		RemoveOfflineHosts(ctx context.Context, minRecentScanFailures uint64, maxDowntime time.Duration) (uint64, error)
 		ResetLostSectors(ctx context.Context, hk types.PublicKey) error
-		SearchHosts(ctx context.Context, filterMode, addressContains string, keyIn []types.PublicKey, offset, limit int) ([]hostdb.Host, error)
+		SearchHosts(ctx context.Context, filterMode, addressContains string, keyIn []types.PublicKey, offset, limit int) ([]api.Host, error)
 
 		HostAllowlist(ctx context.Context) ([]types.PublicKey, error)
 		HostBlocklist(ctx context.Context) ([]string, error)
@@ -285,7 +284,7 @@ func (b *bus) Handler() http.Handler {
 		"GET    /contract/:id/roots":     b.contractIDRootsHandlerGET,
 		"GET    /contract/:id/size":      b.contractSizeHandlerGET,
 
-		"GET    /hosts":                          b.hostsHandlerGET,
+		"GET    /hosts":                          b.hostsHandlerGETDeprecated,
 		"GET    /hosts/allowlist":                b.hostsAllowlistHandlerGET,
 		"PUT    /hosts/allowlist":                b.hostsAllowlistHandlerPUT,
 		"GET    /hosts/blocklist":                b.hostsBlocklistHandlerGET,
@@ -755,13 +754,15 @@ func (b *bus) walletPendingHandler(jc jape.Context) {
 	jc.Encode(relevant)
 }
 
-func (b *bus) hostsHandlerGET(jc jape.Context) {
+func (b *bus) hostsHandlerGETDeprecated(jc jape.Context) {
 	offset := 0
 	limit := -1
 	if jc.DecodeForm("offset", &offset) != nil || jc.DecodeForm("limit", &limit) != nil {
 		return
 	}
-	hosts, err := b.hdb.Hosts(jc.Request.Context(), offset, limit)
+
+	// fetch hosts
+	hosts, err := b.hdb.SearchHosts(jc.Request.Context(), api.HostFilterModeAllowed, "", nil, offset, limit)
 	if jc.Check(fmt.Sprintf("couldn't fetch hosts %d-%d", offset, offset+limit), err) != nil {
 		return
 	}
@@ -773,6 +774,10 @@ func (b *bus) searchHostsHandlerPOST(jc jape.Context) {
 	if jc.Decode(&req) != nil {
 		return
 	}
+
+	// TODO: on the next major release:
+	// - properly default search params
+	// - properly validate and return 400
 	hosts, err := b.hdb.SearchHosts(jc.Request.Context(), req.FilterMode, req.AddressContains, req.KeyIn, req.Offset, req.Limit)
 	if jc.Check(fmt.Sprintf("couldn't fetch hosts %d-%d", req.Offset, req.Offset+req.Limit), err) != nil {
 		return
@@ -1136,6 +1141,7 @@ func (b *bus) contractIDRenewedHandlerPOST(jc jape.Context) {
 	if jc.Check("couldn't store contract", err) == nil {
 		jc.Encode(r)
 	}
+	b.uploadingSectors.addRenewal(req.Contract.ID(), req.RenewedFrom)
 }
 
 func (b *bus) contractIDRootsHandlerGET(jc jape.Context) {

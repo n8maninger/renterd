@@ -6,7 +6,6 @@ import (
 
 	"go.sia.tech/core/types"
 	"go.sia.tech/renterd/api"
-	"go.sia.tech/renterd/hostdb"
 	"go.sia.tech/renterd/worker"
 )
 
@@ -53,7 +52,7 @@ func (c *contractor) HostInfo(ctx context.Context, hostKey types.PublicKey) (api
 	// ignore the pricetable's HostBlockHeight by setting it to our own blockheight
 	host.Host.PriceTable.HostBlockHeight = cs.BlockHeight
 
-	isUsable, unusableResult := isUsableHost(state.cfg, rs, gc, host.Host, minScore, storedData)
+	isUsable, unusableResult := isUsableHost(state.cfg, rs, gc, host, minScore, storedData)
 	return api.HostHandlerResponse{
 		Host: host.Host,
 		Checks: &api.HostHandlerResponseChecks{
@@ -67,7 +66,7 @@ func (c *contractor) HostInfo(ctx context.Context, hostKey types.PublicKey) (api
 	}, nil
 }
 
-func (c *contractor) hostInfoFromCache(ctx context.Context, host hostdb.Host) (hi hostInfo, found bool) {
+func (c *contractor) hostInfoFromCache(ctx context.Context, host api.Host) (hi hostInfo, found bool) {
 	// grab host details from cache
 	c.mu.Lock()
 	hi, found = c.cachedHostInfo[host.PublicKey]
@@ -157,7 +156,7 @@ func (c *contractor) HostInfos(ctx context.Context, filterMode, usabilityMode, a
 				// set IsChecked = false.
 				if usabilityMode == api.UsabilityFilterModeAll {
 					hostInfos = append(hostInfos, api.HostHandlerResponse{
-						Host: host,
+						Host: host.Host,
 					})
 					if wanted > 0 && len(hostInfos) == wanted {
 						return hostInfos, nil // we're done.
@@ -170,7 +169,7 @@ func (c *contractor) HostInfos(ctx context.Context, filterMode, usabilityMode, a
 				continue
 			}
 			hostInfos = append(hostInfos, api.HostHandlerResponse{
-				Host: host,
+				Host: host.Host,
 				Checks: &api.HostHandlerResponseChecks{
 					Gouging:          hi.UnusableResult.gougingBreakdown.Gouging(),
 					GougingBreakdown: hi.UnusableResult.gougingBreakdown,
