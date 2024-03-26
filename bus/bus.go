@@ -1141,6 +1141,7 @@ func (b *bus) contractIDRenewedHandlerPOST(jc jape.Context) {
 	if jc.Check("couldn't store contract", err) == nil {
 		jc.Encode(r)
 	}
+	b.uploadingSectors.addRenewal(req.Contract.ID(), req.RenewedFrom)
 }
 
 func (b *bus) contractIDRootsHandlerGET(jc jape.Context) {
