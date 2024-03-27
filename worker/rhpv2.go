@@ -468,7 +468,7 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 				return err
 			} else if err := t.ReadResponse(&merkleResp, minMessageSize+responseSize); err != nil {
 				err := fmt.Errorf("couldn't read Merkle proof response, err: %v", err)
-				w.logger.Infow(fmt.Sprintf("processing batch %d/%d failed, err %v", i+1, len(batches), err))
+				w.logger.Infow(fmt.Sprintf("processing batch %d/%d failed, err %v", i+1, len(batches), err), "base", settings.BaseRPCPrice.ExactString(), "bw", settings.DownloadBandwidthPrice.ExactString(), "sectors", numSectors)
 				return err
 			}
 
