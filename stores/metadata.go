@@ -1718,7 +1718,10 @@ func (s *SQLStore) DeleteHostSector(ctx context.Context, hk types.PublicKey, roo
 	return deletedSectors, err
 }
 
-func (s *SQLStore) UpdateObject(ctx context.Context, bucket, path, contractSet, eTag, mimeType string, metadata api.ObjectUserMetadata, o object.Object) error {
+func (s *SQLStore) UpdateObject(ctx context.Context, bucket, path, contractSet, eTag, mimeType string, metadata api.ObjectUserMetadata, o object.Object) (err error) {
+	defer func() {
+		s.logger.Debugw("DEBUG PJ: UPDATE OBJECT", "bucket", bucket, "path", path, "err", err)
+	}()
 	// Sanity check input.
 	for _, s := range o.Slabs {
 		for i, shard := range s.Shards {
