@@ -388,6 +388,10 @@ func (os *objectStoreMock) AddUploadingSector(ctx context.Context, uID api.Uploa
 	return nil
 }
 
+func (os *objectStoreMock) ObjectsBySlabKey(ctx context.Context, bucket string, key object.EncryptionKey) (objects []api.ObjectMetadata, err error) {
+	return nil, nil
+}
+
 func (os *objectStoreMock) TrackUpload(ctx context.Context, uID api.UploadID) error { return nil }
 
 func (os *objectStoreMock) FinishUpload(ctx context.Context, uID api.UploadID) error { return nil }

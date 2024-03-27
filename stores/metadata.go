@@ -2714,7 +2714,22 @@ func archiveContracts(tx *gorm.DB, contracts []dbContract, toArchive map[types.F
 	return nil
 }
 
-func pruneSlabs(tx *gorm.DB) error {
+func pruneSlabs(tx *gorm.DB, l *zap.SugaredLogger) error {
+	var roots []hash256
+	if err := tx.Raw(`
+SELECT root FROM sectors WHERE db_slab_id IN (
+	SELECT id
+	FROM slabs
+	WHERE NOT EXISTS (SELECT 1 FROM slices WHERE slices.db_slab_id = slabs.id)
+	AND slabs.db_buffered_slab_id IS NULL
+)
+	`).Scan(&roots).Error; err != nil {
+		panic(err)
+	}
+	for _, root := range roots {
+		l.Debugw("DEBUG PJ: CASCADE DELETE ROOT", "root", types.Hash256(root))
+	}
+
 	// delete slabs without any associated slices or buffers
 	return tx.Exec(`
 DELETE
@@ -2776,7 +2791,7 @@ where object_id = ?;
 	numDeleted := tx.RowsAffected
 	if numDeleted == 0 {
 		return 0, nil // nothing to prune if no object was deleted
-	} else if err := pruneSlabs(tx); err != nil {
+	} else if err := pruneSlabs(tx, s.logger); err != nil {
 		return numDeleted, err
 	}
 	return numDeleted, nil
@@ -2811,7 +2826,7 @@ func (s *SQLStore) deleteObjects(ctx context.Context, bucket string, path string
 			// prune slabs if we deleted an object
 			rowsAffected = res.RowsAffected
 			if rowsAffected > 0 {
-				return pruneSlabs(tx)
+				return pruneSlabs(tx, s.logger)
 			}
 			duration = time.Since(start)
 			return nil

@@ -100,6 +100,7 @@ type (
 
 		overpay     bool
 		overdrive   bool
+		sectorInfo  sectorInfo
 		sectorIndex int
 		resps       *sectorResponses
 	}
@@ -680,10 +681,11 @@ func (s *slabDownload) nextRequest(ctx context.Context, resps *sectorResponses, 
 	return &sectorDownloadReq{
 		ctx: ctx,
 
-		offset: s.offset,
-		length: s.length,
-		root:   sector.Root,
-		host:   fastest,
+		offset:     s.offset,
+		length:     s.length,
+		sectorInfo: sector,
+		root:       sector.Root,
+		host:       fastest,
 
 		// overpay is set to 'true' when a request is retried after the slab
 		// download failed and we realise that it might have succeeded if we
@@ -763,7 +765,7 @@ loop:
 
 				// handle lost sectors
 				if isSectorNotFound(resp.err) {
-					ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 					objs, errr := s.mgr.os.ObjectsBySlabKey(ctx, api.DefaultBucketName, s.key)
 					cancel()
 					if errr != nil {
@@ -774,7 +776,14 @@ loop:
 						oids = append(oids, o.Name)
 					}
 
-					s.mgr.logger.Debugw("DEBUG PJ: LOST ROOT", "hk", resp.req.host.PublicKey(), "root", resp.req.root, "objects", strings.Join(oids, "|"))
+					var fcids []string
+					contracts, ok := resp.req.sectorInfo.Contracts[resp.req.host.PublicKey()]
+					if ok {
+						for _, fcid := range contracts {
+							fcids = append(fcids, fcid.String())
+						}
+					}
+					s.mgr.logger.Debugw("DEBUG PJ: LOST ROOT", "hk", resp.req.host.PublicKey(), "root", resp.req.root, "objects", strings.Join(oids, "|"), "fcids", strings.Join(fcids, "|"))
 					if err := s.mgr.os.DeleteHostSector(ctx, resp.req.host.PublicKey(), resp.req.root); err != nil {
 						s.mgr.logger.Errorw("failed to mark sector as lost", "hk", resp.req.host.PublicKey(), "root", resp.req.root, zap.Error(err))
 					}
