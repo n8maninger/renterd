@@ -2743,7 +2743,6 @@ AND slabs.db_buffered_slab_id IS NULL
 // without an obect after the deletion. That means in case of packed uploads,
 // the slab is only deleted when no more objects point to it.
 func (s *SQLStore) deleteObject(tx *gorm.DB, bucket string, path string) (int64, error) {
-	s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path)
 	// check if the object exists first to avoid unnecessary locking for the
 	// common case
 	var objID uint
@@ -2753,8 +2752,10 @@ func (s *SQLStore) deleteObject(tx *gorm.DB, bucket string, path string) (int64,
 		Limit(1).
 		Scan(&objID)
 	if err := resp.Error; err != nil {
+		s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path, "err", err)
 		return 0, err
 	} else if resp.RowsAffected == 0 {
+		s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path, "err", errors.New("no rows affected"))
 		return 0, nil
 	}
 	type dbDebug struct {
@@ -2773,7 +2774,7 @@ inner join slabs on slices.db_slab_id = slabs.id
 inner join sectors on sectors.db_slab_id = slabs.id
 where object_id = ?;
 `, bucket, path).Scan(&rows).Error; err != nil {
-		panic(err)
+		s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path, "err", err, "debug", true)
 	}
 	if len(rows) > 0 {
 		for _, row := range rows {
@@ -2786,12 +2787,15 @@ where object_id = ?;
 	tx = tx.Where("id", objID).
 		Delete(&dbObject{})
 	if tx.Error != nil {
+		s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path, "err", tx.Error)
 		return 0, tx.Error
 	}
 	numDeleted := tx.RowsAffected
 	if numDeleted == 0 {
+		s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path, "err", errors.New("nothing deleted"))
 		return 0, nil // nothing to prune if no object was deleted
 	} else if err := pruneSlabs(tx, s.logger); err != nil {
+		s.logger.Debugw("DEBUG PJ: DELETE OBJECT", "bucket", bucket, "path", path, "err", tx.Error, "prune", true)
 		return numDeleted, err
 	}
 	return numDeleted, nil
