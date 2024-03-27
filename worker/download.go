@@ -765,8 +765,8 @@ loop:
 
 				// handle lost sectors
 				if isSectorNotFound(resp.err) {
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-					objs, errr := s.mgr.os.ObjectsBySlabKey(ctx, api.DefaultBucketName, s.key)
+					oCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+					objs, errr := s.mgr.os.ObjectsBySlabKey(oCtx, api.DefaultBucketName, s.key)
 					cancel()
 					if errr != nil {
 						s.mgr.logger.Debugf("DEBUG PJ: failed to get objects by slab key, err %v", errr)
