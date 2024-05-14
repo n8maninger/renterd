@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -55,6 +56,10 @@ var (
 	// ErrNoSectorsToPrune is returned when we try to prune a contract that has
 	// no sectors to prune.
 	ErrNoSectorsToPrune = errors.New("no sectors to prune")
+
+	// errInsufficientHostTransfer is returned by the host when it notices the
+	// renter is trying to underpay.
+	errInsufficientHostTransfer = errors.New("insufficient host transfer")
 )
 
 // A HostErrorSet is a collection of errors from various hosts.
@@ -287,64 +292,72 @@ func (w *worker) FetchSignedRevision(ctx context.Context, hostIP string, hostKey
 }
 
 func (w *worker) PruneContract(ctx context.Context, hostIP string, hostKey types.PublicKey, fcid types.FileContractID, lastKnownRevisionNumber uint64) (deleted, remaining uint64, err error) {
-	err = w.withContractLock(ctx, fcid, lockingPriorityPruning, func() error {
-		return w.withTransportV2(ctx, hostKey, hostIP, func(t *rhpv2.Transport) error {
-			return w.withRevisionV2(defaultLockTimeout, t, hostKey, fcid, lastKnownRevisionNumber, func(t *rhpv2.Transport, rev rhpv2.ContractRevision, settings rhpv2.HostSettings) (err error) {
-				// perform gouging checks
-				gc, err := GougingCheckerFromContext(ctx, false)
-				if err != nil {
+	retry := true
+	for i := 0; i < 2 && retry; i++ { // retry once max
+		err = w.withContractLock(ctx, fcid, lockingPriorityPruning, func() error {
+			return w.withTransportV2(ctx, hostKey, hostIP, func(t *rhpv2.Transport) error {
+				return w.withRevisionV2(defaultLockTimeout, t, hostKey, fcid, lastKnownRevisionNumber, func(t *rhpv2.Transport, rev rhpv2.ContractRevision, settings rhpv2.HostSettings) error {
+					deleted, remaining, retry, err = w.pruneContract(ctx, t, rev, settings)
 					return err
-				}
-				if breakdown := gc.Check(&settings, nil); breakdown.Gouging() {
-					return fmt.Errorf("failed to prune contract: %v", breakdown)
-				}
-
-				// delete roots
-				got, err := w.fetchContractRoots(t, &rev, settings)
-				if err != nil {
-					return err
-				}
-
-				// fetch the roots from the bus
-				want, pending, err := w.bus.ContractRoots(ctx, fcid)
-				if err != nil {
-					return err
-				}
-				keep := make(map[types.Hash256]struct{})
-				for _, root := range append(want, pending...) {
-					keep[root] = struct{}{}
-				}
-
-				// collect indices for roots we want to prune
-				var indices []uint64
-				for i, root := range got {
-					if _, wanted := keep[root]; wanted {
-						delete(keep, root) // prevent duplicates
-						continue
-					}
-					indices = append(indices, uint64(i))
-				}
-				if len(indices) == 0 {
-					return fmt.Errorf("%w: database holds %d (%d pending), contract contains %d", ErrNoSectorsToPrune, len(want)+len(pending), len(pending), len(got))
-				}
-
-				// delete the roots from the contract
-				deleted, err = w.deleteContractRoots(t, &rev, settings, indices)
-				if deleted < uint64(len(indices)) {
-					remaining = uint64(len(indices)) - deleted
-				}
-
-				// return sizes instead of number of roots
-				deleted *= rhpv2.SectorSize
-				remaining *= rhpv2.SectorSize
-				return
+				})
 			})
 		})
-	})
+	}
 	return
 }
 
-func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevision, settings rhpv2.HostSettings, indices []uint64) (deleted uint64, err error) {
+func (w *worker) pruneContract(ctx context.Context, t *rhpv2.Transport, rev rhpv2.ContractRevision, hs rhpv2.HostSettings) (deleted, remaining uint64, retry bool, err error) {
+	// perform gouging checks
+	gc, err := GougingCheckerFromContext(ctx, false)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if breakdown := gc.Check(&hs, nil); breakdown.Gouging() {
+		return 0, 0, false, fmt.Errorf("failed to prune contract: %v", breakdown)
+	}
+
+	// delete roots
+	got, err := w.fetchContractRoots(t, &rev, hs)
+	if err != nil {
+		return 0, 0, false, err
+	}
+
+	// fetch the roots from the bus
+	want, pending, err := w.bus.ContractRoots(ctx, rev.ID())
+	if err != nil {
+		return 0, 0, false, err
+	}
+	keep := make(map[types.Hash256]struct{})
+	for _, root := range append(want, pending...) {
+		keep[root] = struct{}{}
+	}
+
+	// collect indices for roots we want to prune
+	var indices []uint64
+	for i, root := range got {
+		if _, wanted := keep[root]; wanted {
+			delete(keep, root) // prevent duplicates
+			continue
+		}
+		indices = append(indices, uint64(i))
+	}
+	if len(indices) == 0 {
+		return 0, 0, false, fmt.Errorf("%w: database holds %d (%d pending), contract contains %d", ErrNoSectorsToPrune, len(want)+len(pending), len(pending), len(got))
+	}
+
+	// delete the roots from the contract
+	deleted, retry, err = w.deleteContractRoots(t, &rev, hs, indices)
+	if deleted < uint64(len(indices)) {
+		remaining = uint64(len(indices)) - deleted
+	}
+
+	// return sizes instead of number of roots
+	deleted *= rhpv2.SectorSize
+	remaining *= rhpv2.SectorSize
+	return
+}
+
+func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevision, settings rhpv2.HostSettings, indices []uint64) (deleted uint64, retry bool, err error) {
 	id := frand.Entropy128()
 	logger := w.logger.
 		With("id", hex.EncodeToString(id[:])).
@@ -357,7 +370,7 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 
 	// return early
 	if len(indices) == 0 {
-		return 0, nil
+		return 0, false, nil
 	}
 
 	// sort in descending order so that we can use 'range'
@@ -391,7 +404,7 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 
 	// range over the batches and delete the sectors batch per batch
 	for i, batch := range batches {
-		if err = func() error {
+		if err = func() (err error) {
 			var cost types.Currency
 			start := time.Now()
 			logger.Infow(fmt.Sprintf("starting batch %d/%d of size %d", i+1, len(batches), len(batch)))
@@ -439,6 +452,9 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 				}
 				cost = settings.BaseRPCPrice.Add(settings.DownloadBandwidthPrice.Mul64(responseSize))
 				cost = cost.Mul64(2) // generous leeway
+			} else if w.isCompatHostV021(rev.HostKey()) {
+				responseSize = (128 + uint64(len(actions))) * crypto.HashSize
+				cost = settings.BaseRPCPrice.Add(settings.DownloadBandwidthPrice.Mul64(responseSize))
 			}
 
 			if rev.RenterFunds().Cmp(cost) < 0 {
@@ -475,8 +491,9 @@ func (w *worker) deleteContractRoots(t *rhpv2.Transport, rev *rhpv2.ContractRevi
 			if err := t.WriteRequest(rhpv2.RPCWriteID, wReq); err != nil {
 				return err
 			} else if err := t.ReadResponse(&merkleResp, minMessageSize+responseSize); err != nil {
+				retry = w.compatPruneHostV021RetryCheck(err, rev.HostKey(), settings, cost, uint64(len(actions)))
 				err := fmt.Errorf("couldn't read Merkle proof response, err: %v", err)
-				logger.Infow(fmt.Sprintf("processing batch %d/%d failed, err %v", i+1, len(batches), err))
+				logger.Infow(fmt.Sprintf("processing batch %d/%d failed, err %v, retry %t", i+1, len(batches), err, retry))
 				return err
 			}
 
@@ -715,6 +732,60 @@ func (w *worker) withRevisionV2(lockTimeout time.Duration, t *rhpv2.Transport, h
 	}
 
 	return fn(t, rev, settings)
+}
+
+// compatPruneHostV021RetryCheck is an error check that is used to determine
+// whether we want to retry a prune operation on a host that is running an older
+// version of the host software that calculates costs differently. This method
+// returns true if and only if the error indicates an insufficient host
+// transfer, but also the 'got' matches what we sent and the 'want' matches what
+// we would send in a retry
+func (w *worker) compatPruneHostV021RetryCheck(err error, hk types.PublicKey, hs rhpv2.HostSettings, sent types.Currency, actions uint64) bool {
+	w.pruneMu.Lock()
+	defer w.pruneMu.Unlock()
+
+	// check if we're dealing with insufficient host transfer
+	if !utils.IsErr(err, errInsufficientHostTransfer) {
+		return false
+	}
+
+	// check if we're dealing with a known host, this is important because it
+	// ensures we don't keep retrying should we receive the same error on retry
+	if _, found := w.pruneCompatHostV021[hk]; found {
+		return false
+	}
+
+	// check if we can parse two currency values from the error message (got/want)
+	matches := regexp.MustCompile("\\d+").FindAllString(err.Error(), -1)
+	if len(matches) != 2 {
+		return false
+	}
+
+	// check if 'got' matches what we went
+	got, err := types.ParseCurrency(matches[1])
+	if err != nil {
+		return false
+	} else if !got.Equals(sent) {
+		return false
+	}
+
+	// check if 'want' matches what we would send in a retry
+	want, err := types.ParseCurrency(matches[0])
+	if err != nil {
+		return false
+	} else if want.Cmp(hs.BaseRPCPrice.Add(hs.DownloadBandwidthPrice.Mul64(crypto.HashSize*(128+actions)))) != 0 {
+		return false
+	}
+
+	w.pruneCompatHostV021[hk] = struct{}{}
+	return true
+}
+
+func (w *worker) isCompatHostV021(hk types.PublicKey) bool {
+	w.pruneMu.Lock()
+	defer w.pruneMu.Unlock()
+	_, found := w.pruneCompatHostV021[hk]
+	return found
 }
 
 func humanReadableSize(b int) string {

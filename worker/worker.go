@@ -214,6 +214,9 @@ type worker struct {
 	uploadsMu            sync.Mutex
 	uploadingPackedSlabs map[string]struct{}
 
+	pruneMu             sync.Mutex
+	pruneCompatHostV021 map[types.PublicKey]struct{}
+
 	contractSpendingRecorder ContractSpendingRecorder
 	contractLockingDuration  time.Duration
 
@@ -1285,6 +1288,7 @@ func New(masterKey [32]byte, id string, b Bus, contractLockingDuration, busFlush
 		masterKey:               masterKey,
 		logger:                  l.Sugar(),
 		startTime:               time.Now(),
+		pruneCompatHostV021:     make(map[types.PublicKey]struct{}),
 		uploadingPackedSlabs:    make(map[string]struct{}),
 		shutdownCtx:             ctx,
 		shutdownCtxCancel:       cancel,
