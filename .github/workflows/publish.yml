@@ -107,17 +107,20 @@ jobs:
       - name: Get Release Asset
         uses: actions/github-script@v7
         id: get_release_asset
+        env:
+          ARCH: ${{ matrix.arch }}
+          NETWORK: ${{ matrix.network }}
         with:
           script: |
-            const arch = context.matrix.arch,
-              network = context.matrix.network,
-              release = ['renterd', 'linux'];
+            const arch = process.env.ARCH,
+              network = process.env.NETWORK;
 
-            if (network === 'zen')
-              release.push('zen');
-            
-            release.push(arch);
-            return release.join('-');            
+            switch (network) {
+            case 'mainnet':
+              return `renterd_darwin_${arch}`;
+            default:
+              return `renterd_${network}_darwin_${arch}`;
+            }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.get_payload.outputs.result }}
@@ -198,17 +201,20 @@ jobs:
       - name: Get Release Asset
         uses: actions/github-script@v7
         id: get_release_asset
+        env:
+          ARCH: ${{ matrix.arch }}
+          NETWORK: ${{ matrix.network }}
         with:
           script: |
-            const arch = context.matrix.arch,
-              network = context.matrix.network,
-              release = ['renterd', 'darwin'];
+            const arch = process.env.ARCH,
+              network = process.env.NETWORK;
 
-            if (network === 'zen')
-              release.push('zen');
-            
-            release.push(arch);
-            return release.join('-');            
+            switch (network) {
+            case 'mainnet':
+              return `renterd_darwin_${arch}`;
+            default:
+              return `renterd_${network}_darwin_${arch}`;
+            }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.get_payload.outputs.result }}
@@ -254,17 +260,20 @@ jobs:
       - name: Get Release Asset
         uses: actions/github-script@v7
         id: get_release_asset
+        env:
+          ARCH: ${{ matrix.arch }}
+          NETWORK: ${{ matrix.network }}
         with:
           script: |
-            const arch = context.matrix.arch,
-              network = context.matrix.network,
-              release = ['renterd', 'windows'];
+            const arch = process.env.ARCH,
+              network = process.env.NETWORK;
 
-            if (network === 'zen')
-              release.push('zen');
-            
-            release.push(arch);
-            return release.join('-');            
+            switch (network) {
+            case 'mainnet':
+              return `renterd_darwin_${arch}`;
+            default:
+              return `renterd_${network}_darwin_${arch}`;
+            }
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.get_payload.outputs.result }}
@@ -277,7 +286,7 @@ jobs:
       - name: Merge Artifacts
         uses: actions/upload-artifact/merge@v4
         with:
-          name: renterd-release-assets-combined
+          name: renterd
 
   dispatch-homebrew: # only runs on full releases
     if: startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-')
