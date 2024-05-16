@@ -110,6 +110,7 @@ jobs:
           ARCH: ${{ matrix.arch }}
           NETWORK: ${{ matrix.network }}
         with:
+          result-encoding: string
           script: |
             const arch = process.env.ARCH,
               network = process.env.NETWORK;
@@ -204,6 +205,7 @@ jobs:
 #          ARCH: ${{ matrix.arch }}
 #          NETWORK: ${{ matrix.network }}
 #        with:
+#          result-encoding: string
 #          script: |
 #            const arch = process.env.ARCH,
 #              network = process.env.NETWORK;
@@ -263,6 +265,7 @@ jobs:
 #          ARCH: ${{ matrix.arch }}
 #          NETWORK: ${{ matrix.network }}
 #        with:
+#          result-encoding: string
 #          script: |
 #            const arch = process.env.ARCH,
 #              network = process.env.NETWORK;
